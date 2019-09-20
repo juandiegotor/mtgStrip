@@ -1,12 +1,50 @@
 const request = require('request');
 const jsdom = require("jsdom");
+const fs = require('fs')
 const { JSDOM } = jsdom;
 
 // maneja el proceso para obtener la informacion
 function stripHTML (rawHTML, cb) {
+    let pagesProcessed = 0;
     const dom = new JSDOM(rawHTML);
+
+    tableLast = dom.window.document.querySelectorAll('#content table:last-of-type')[1]
+    links = tableLast.querySelectorAll('td a')
+    
     oddRows = dom.window.document.querySelectorAll(".deckdbbody_row")
     evenRows = dom.window.document.querySelectorAll(".deckdbbody2_row")
+    itemDefile(oddRows, (items) => {
+        itemDefile(evenRows, (items2) => {
+            pagesProcessed++
+            items = items.concat(items2)
+            if (pagesProcessed >= links.length-1) {
+                cb(items)
+            } else {
+                for (let i=1; i<links.length-1; i++) {
+                    request({uri: links[i].href}, (err, res, body) => {
+                        if (err) throw err;
+                        stripInnerHTML(body, (itemsn) => {
+                            items = items.concat(itemsn)
+                            pagesProcessed++
+                            if (pagesProcessed >= links.length-1) {
+                                cb(items)
+                            }
+                        })
+                    })
+                }
+            }
+        })
+    })
+}
+
+
+// manages dividing, doesn't care for more pages
+function stripInnerHTML (rawHTML, cb) {
+    const dom = new JSDOM(rawHTML);
+    
+    oddRows = dom.window.document.querySelectorAll(".deckdbbody_row")
+    evenRows = dom.window.document.querySelectorAll(".deckdbbody2_row")
+
     itemDefile(oddRows, (items) => {
         itemDefile(evenRows, (items2) => {
             cb(items.concat(items2))
@@ -14,6 +52,7 @@ function stripHTML (rawHTML, cb) {
     })
 }
 
+// Saca las filas
 function itemDefile (rows, callback) {
     let items = []
     let itemsProcessed = 0
@@ -317,20 +356,17 @@ function itemDefile (rows, callback) {
 }
 
 if (process.argv[2] == 'local') {
-    console.log(stripHTML(html))
+    fs.readFile(process.argv[3], (err, data) => {
+        if (err) throw err;
+        stripHTML(data, (items) => {
+            console.log(items)
+        })
+    })
 } else {
-    request({
-        uri: process.argv[2]
-    }, (err, res, body) => {
+    request({uri: process.argv[2]}, (err, res, body) => {
         if (err) throw err;
         stripHTML(body, (items) => {
             console.log(items)
         })
     })
 }
-
-/*
-const root = HTMLParser.parse(html);
-q = root.querySelector('.deckdbbody_row'),
-console.log(q.childNodes[0].childNodes[0].innerHTML);
-*/
